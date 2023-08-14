@@ -1,11 +1,9 @@
-<%@ page language="java" contentType="text/html; charset=UTF-8"
-    pageEncoding="UTF-8"%>
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
 <%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
-<html lang="ko">
-<title>OpenSoftLab</title>
-<link rel='stylesheet' href='<c:url value='/css/ztree/zTreeStyle/zTreeStyle.css'/>' type='text/css'>
+<%@ taglib prefix="fn" uri="http://java.sun.com/jsp/jstl/functions" %>
+<%@ include file="/WEB-INF/jsp/lunaops/top/header.jsp" %>
+<link rel='stylesheet' href='<c:url value='/css/lunaops/rep.css'/>' type='text/css'>
 <script type="text/javascript" src="/js/ztree/jquery.ztree.all.min.js"></script>
-<link rel='stylesheet' href='<c:url value='/css/lunaops/stm2002.css'/>' type='text/css'>
 <style>
 	.groupClear {height: 0;}
 	.layer_popup_box .popup{overflow:hidden !important;}
@@ -35,25 +33,83 @@
 	
 	//소스저장소 정보
 	var globals_repInfo;
-	
+
 	//스크립트 초기화
 	$(document).ready(function(){
+		//가이드 상자 호출
+		gfnGuideStack("add",fnRep1002GuideShow);
+		
 		//소스저장소 접속 체크
 		svnConnCheck();
+		
+		//닫기 버튼
+		$("#repDetailCloseBtn").click(function(){
+			window.close();
+		});
+		//리비전 선택 버튼
+		$("#repDataSendBtn").click(function(){
+			//팝업이 아닌 경우 동작 안함
+			if(opener){
+				var repId = $("form#rep1002PopupFrm > #repId").val();
+				//callback function 값
+				var rtnValue = [];
+				
+				//선택한 JOB
+				var selRepList = repPopupGrid.getList("selected");
+				
+				//선택된 리비전 없는 경우
+				if (gfnIsNull(selRepList)) {
+					jAlert("선택한  리비전이 없습니다.</br>리비전을 선택해주세요.", "알림창");
+					return false;
+				}
+				//선택된 리비전번호 문구
+				var addMsg = "";
+				$.each(selRepList, function(idx, map){
+					if(idx > 0){
+						addMsg += ", ";
+					}
+					addMsg += map.revision;
+					
+					//반환값 세팅
+					var repInfo = {
+						"rep_id": repId
+						, "revision": map.revision
+						, "comment": map.comment
+						, "author": map.author
+						, "logDate": map.logDate
+						, "sDate": map.sDate
+						, "svnFileList": map.svnFileList
+					}
+					
+					rtnValue.push(repInfo);
+				});
+				console.log(rtnValue);
+				jConfirm("선택된 리비전 "+selRepList.length+"개를 연결하시겠습니까?</br></br>[선택 리비전]</br>"+addMsg,"알림창", function(result){
+					if(result){
+						//function 체크
+						if(typeof opener.parent.setRepItems == "function"){
+							opener.parent.setRepItems(rtnValue);
+						}
+						window.close();
+					}
+				});
+				
+			}
+		});
 	});
 
 	
 	//소스저장소 접속 체크
 	function svnConnCheck(){
-		var repId = $("#repId").val();
+		var repId = $("form#rep1002PopupFrm > #repId").val();
 		//AJAX 설정
 		var ajaxObj = new gfnAjaxRequestAction(
-				{"url":"<c:url value='/stm/stm2000/stm2000/selectStm2000ConfirmConnect.do'/>","loadingShow": false, "async": false}
+				{"url":"<c:url value='/rep/rep1000/rep1000/selectRep1000ConfirmConnect.do'/>","loadingShow": false, "async": false}
 				,{ "repId" : repId, "gitRepUrlCheckCd": "Y" });
 		
 		//AJAX 전송 성공 함수
 		ajaxObj.setFnSuccess(function(data){
-			data = JSON.parse(data);
+			
 			if(data.MSG_CD =="REP_OK"){
 				//마지막 리비전 번호
 				lastRevision = data.lastRevisionNum;
@@ -78,12 +134,6 @@
 				gfnLayerPopupClose();
 				jAlert("소스저장소 연결에 실패했습니다.", "알림창");
 			} 	
-		});
-		
-		//AJAX 전송 오류 함수
-		ajaxObj.setFnError(function(xhr, status, err){
-			data = JSON.parse(data);
-			jAlert(data.message, "알림창");
 		});
 		
 		//AJAX 전송
@@ -127,6 +177,7 @@
 	 
 		repPopupGrid.setConfig({
 			target: $('[data-ax5grid="rep-grid"]'),
+			showRowSelector: true,
 			sortable:false,
 			header: {align:"center",columnHeight: 30},
 			frozenColumnIndex: 4,
@@ -135,6 +186,9 @@
 				align: "center",
 				columnHeight: 30,
 	            onClick:function(){
+	            	// 클릭 이벤트
+	   				this.self.select(this.doindex, {selected: !this.item.__selected__});	
+	            	
 	            	//커밋로그
 					$("#svnCommitLogDetail").val(this.item.comment);
 	            	
@@ -149,35 +203,6 @@
 	            	selCommitId = this.item.commitId;
 	            }
 			},
-            contextMenu: {
-                iconWidth: 20,
-                acceleratorWidth: 100,
-                itemClickAndClose: false,
-                icons: {
-                    'arrow': '<i class="fa fa-caret-right"></i>'
-                },
-                items: [
-                    {type: "revisionReqList", label: "배정 요구사항 목록", icon:"<i class='fa fa-info-circle' aria-hidden='true'></i>"},
-                ],
-                popupFilter: function (item, param) {
-                	var selItem = repPopupGrid.list[param.doindex];
-                	//선택 개체 없는 경우 중지
-                	if(typeof selItem == "undefined"){
-                		return false;
-                	}
-                	return true;
-                },
-                onClick: function (item, param) {
-                	var selItem = repPopupGrid.list[param.doindex];
-
-                    if(item.type == "revisionReqList"){
-                    	//배정된 요구사항 팝업
-    					var data = {"prjId":"${sessionScope.selPrjId}", "repId": $('#repId').val(), "revisionNum": selItem.revision};
-    	 				gfnLayerPopupOpen('/stm/stm2000/stm2000/selectStm2004View.do',data,"850","550",'scroll');	
-                    }
-                    repPopupGrid.contextMenu.close();
-                }
-            },
 	        page: {
 				navigationItemCount: 9,
 				height: 30,
@@ -189,7 +214,7 @@
 				onChange: function () {
 					/* 검색 조건 설정 후 reload */
 					var pars = svnSearchObj.getParam();
-					var ajaxParam = $('form#stm2002PopupFrm').serialize();
+					var ajaxParam = $('form#rep1002PopupFrm').serialize();
 
 					if(!gfnIsNull(pars)){
 						ajaxParam += "&"+pars;
@@ -205,7 +230,7 @@
 		//리비전 데이터 초기화 후 마스크 처리 하기
 		$("#revisionFileList").html("리비전을 선택해주세요.");
 		$("#revisionFileList").show();
-		$("#stm2002FileTree").html('');
+		$("#rep1002FileTree").html('');
 		
 		//그리드 데이터 마스크 영역
 		$("#repGridList").show();
@@ -214,7 +239,7 @@
 		/* 그리드 데이터 가져오기 */
 	   	//파라미터 세팅
 	   	if(gfnIsNull(ajaxParam)){
-	 			ajaxParam = $('form#stm2002PopupFrm').serialize();
+	 			ajaxParam = $('form#rep1002PopupFrm').serialize();
 	 		}
 	   	
 	   	//페이지 세팅
@@ -226,11 +251,11 @@
 	
 	   	//AJAX 설정
 		var ajaxObj = new gfnAjaxRequestAction(
-				{"url":"<c:url value='/stm/stm2000/stm2000/selectStm2002RepositoryPageListAjaxView.do'/>","loadingShow": false}
+				{"url":"<c:url value='/rep/rep1000/rep1000/selectRep1002RepositoryPageListAjaxView.do'/>","loadingShow": false}
 				,ajaxParam);
 		//AJAX 전송 성공 함수
 		ajaxObj.setFnSuccess(function(data){
-			data = JSON.parse(data);
+			
 
 			//반환 받은 리비전 번호 세팅
 			axdom("#" + svnSearchObj.getItemId("startRevisionVal")).val(data.startRevision);
@@ -352,7 +377,7 @@
 			                            ],onChange: function(selectedObject, value){
 			                            	/* 검색 조건 설정 후 reload */
 				 							var pars = svnSearchObj.getParam();
-										    var ajaxParam = $('form#stm2002PopupFrm').serialize();
+										    var ajaxParam = $('form#rep1002PopupFrm').serialize();
 
 										    if(!gfnIsNull(pars)){
 										    	ajaxParam += "&"+pars;
@@ -376,7 +401,7 @@
 								onclick:function(){
 									/* 검색 조건 설정 후 reload */
 		 							var pars = svnSearchObj.getParam();
-								    var ajaxParam = $('form#stm2002PopupFrm').serialize();
+								    var ajaxParam = $('form#rep1002PopupFrm').serialize();
 
 								    if(!gfnIsNull(pars)){
 								    	ajaxParam += "&"+pars;
@@ -408,9 +433,6 @@
 			
 			//기간 검색 달기
 			gfnCalRangeSet(svnSearchObj.getItemId("searchStDate"), svnSearchObj.getItemId("searchEdDate"));
-			
-			//버튼 권한 확인
-			fnBtnAuthCheck(svnSearchObj);
 
 			//리비전 범위 세팅하기 - 최초 100개
 			axdom("#" + svnSearchObj.getItemId("startRevisionVal")).val((lastRevision-100));
@@ -423,16 +445,16 @@
 	
 
 	function fnSearchFileDirTree(revisionIndex, commitId){
-		var data = {"revision" : revisionIndex, "commitId" : commitId , "prjId" : $('#prjId').val(), "repId" : $('#repId').val()};
+		var data = {"revision" : revisionIndex, "commitId" : commitId , "repId" : $('#repId').val()};
 		
 		//AJAX 설정
 		var ajaxObj = new gfnAjaxRequestAction(
-				{"url":"<c:url value='/stm/stm2000/stm2000/selectStm2002FileDirAjaxList.do'/>","loadingShow": false}
+				{"url":"<c:url value='/rep/rep1000/rep1000/selectRep1002FileDirAjaxList.do'/>","loadingShow": false}
 				,data);
 		
 		//AJAX 전송 성공 함수
 		ajaxObj.setFnSuccess(function(data){
-			data = JSON.parse(data);
+			
 	    
 			//오류
 			if(data.errorYn == "Y"){
@@ -476,9 +498,8 @@
 		    	
 			    revisionFileList = data.revisionFileList;
 			    var dirList = data.revisionDirList;
-			    console.log(dirList);
 			    // zTree 초기화
-			    zTree = $.fn.zTree.init($("#stm2002FileTree"), setting, dirList);
+			    zTree = $.fn.zTree.init($("#rep1002FileTree"), setting, dirList);
 			    
 			    if(dirList.length >0){
 			    	//리비전 파일목록 mask hide
@@ -493,11 +514,6 @@
 			}
 		});
 		
-		//AJAX 전송 오류 함수
-		ajaxObj.setFnError(function(xhr, status, err){
-			data = JSON.parse(data);
-			jAlert(data.message, "알림창");
-	 	});
 		//AJAX 전송
 		ajaxObj.send();
 	}
@@ -522,7 +538,7 @@
                 columnHeight: 30,
                 onDBLClick:function(){
                 	var data = {"revision" : selRevision, "commitId" : selCommitId ,"path": this.item.path, "name": this.item.name, "repId" : $("#repId").val()}; 
-					gfnLayerPopupOpen("/stm/stm2000/stm2000/selectStm2003View.do", data, "1200", "780",'auto');
+					gfnLayerPopupOpen("/rep/rep1000/rep1000/selectRep1003View.do", data, "1200", "780",'auto');
                 }
             },
             contextMenu: {
@@ -555,8 +571,7 @@
             			
                     	//배정된 요구사항 팝업
     					var data = {
-                    			"prjId":"${sessionScope.selPrjId}"
-                    			, "repId": $('#repId').val()
+                    			 "repId": $('#repId').val()
                     			, "revisionNum": selRevision
                     			, "commitId": selCommitId
                     			, "filePath": selItem.path
@@ -567,7 +582,7 @@
                     			, "fileName": selItem.name
                     			, "repTypeCd": repTypeCd
                     			};
-    	 				gfnLayerPopupOpen('/stm/stm2000/stm2000/selectStm2005View.do',data,"1100","680",'scroll');	
+    	 				gfnLayerPopupOpen('/rep/rep1000/rep1000/selectRep1005View.do',data,"1100","680",'scroll');	
                     }
                     filePathGrid.contextMenu.close();
                 }
@@ -641,40 +656,52 @@
 		
 		return returnList;
 	}
+	
+	function fnRep1002GuideShow(){
+		var mainObj = $(".main_contents");
+		
+		//mainObj가 없는경우 false return
+		if(mainObj.length == 0){
+			return false;
+		}
+		//guide box setting
+		var guideBoxInfo = globals_guideContents["rep1002"];
+		gfnGuideBoxDraw(true,mainObj,guideBoxInfo);
+	}
 </script>
 
-<div class="popup" >
-	<form id="stm2002PopupFrm" name="stm2002PopupFrm" method="post">
-		<input type="hidden" name="prjId" id="prjId" value="${param.prjId}"/>
-		<input type="hidden" name="repId" id="repId" value="${param.repId}" />
-	</form>
-	<div class="pop_title">소스저장소 상세정보 [ 선택 저장소: <span id="repNm"></span> ]</div>
-	<div class="stm2002Pop_sub">
-		<div class="stm2002SearchFrame stm2002FrameBox" id="repSearchTarget"></div>
-		<div class="stm2002RevisionFrame stm2002FrameBox">
+<div class="main_contents" style="height: auto;" >
+	<div class="tab_contents menu" style="width:1300px;">
+		<form id="rep1002PopupFrm" name="rep1002PopupFrm" method="post">
+			<input type="hidden" name="repId" id="repId" value="${param.repId}" />
+		</form>
+		<div class="sub_title">
+			소스저장소 상세정보 [ 선택 저장소: <span id="repNm"></span> ]
+		</div>
+		<div class="rep1002SearchFrame rep1002FrameBox" id="repSearchTarget" guide="rep1002RepBtn"></div>
+		<div class="rep1002RevisionFrame rep1002FrameBox">
 			<div class="svn_mask_repList" id="repGridList">
 				데이터를 조회중입니다.</br></br>
 				<img class="fixed_loading" src="/images/loading.gif" style="width: 100px;height: 100px;">
 			</div>
-			<div data-ax5grid="rep-grid" data-ax5grid-config="{}" style="height: 240px;"></div>	
+			<div data-ax5grid="rep-grid" data-ax5grid-config="{}" style="height: 250px;" guide="rep1002RepList"></div>	
 		</div>
-		<div class="stm2002CommitLogFrame stm2002FrameBox">
-			<textarea id="svnCommitLogDetail" class="svnCommitLogDetail" readonly="readonly"></textarea>
+		<div class="rep1002CommitLogFrame rep1002FrameBox">
+			<textarea id="svnCommitLogDetail" class="svnCommitLogDetail" readonly="readonly" guide="rep1002RepCommitLog"></textarea>
 		</div>
-		<div class="stm2002FileMainFrame">
+		<div class="rep1002FileMainFrame" guide="rep1002RepChgLog">
 			<div class="svn_mask_content" id="revisionFileList">리비전을 선택해주세요.</div>
-			<div class="stm2002FileTreeFrame stm2002FrameBox">
-				<ul id="stm2002FileTree" class="ztree"></ul>
+			<div class="rep1002FileTreeFrame rep1002FrameBox">
+				<ul id="rep1002FileTree" class="ztree"></ul>
 			</div>
-			<div class="stm2002FileListFrame stm2002FrameBox">
-				<div data-ax5grid="filePath-grid" data-ax5grid-config="{}" style="height: 290px;"></div>
+			<div class="rep1002FileListFrame rep1002FrameBox">
+				<div data-ax5grid="filePath-grid" data-ax5grid-config="{}" style="height: 300px;"></div>
 			</div>
 		</div>
-		<div class="btn_div">
-			<div class="button_normal exit_btn" id="btn_cancle_popup">닫기</div>
+		<div class="btnFrame">
+			<div class="mainPopupBtn" id="repDataSendBtn"><i class="fas fa-paperclip"></i>&nbsp;리비전 선택</div>
+			<div class="mainPopupBtn" id="repDetailCloseBtn">닫기</div>
 		</div>
 	</div>
-
 </div>
-
-</html>
+<jsp:include page="/WEB-INF/jsp/lunaops/bottom/footer.jsp" />
